@@ -227,7 +227,11 @@ rlc-attempts * rlc-timeout seconds.")
             (unwind-protect
                 (loop repeat rlc-attempts
                       if (string-match regexp rlc-accumulated-input)
-                      return (unpath (split-string (or (match-string 1 rlc-accumulated-input) "")))
+                      return (progn
+                               (message "input: %s" rlc-accumulated-input)
+                               (unpath (split-string
+                                        (or (match-string 1 rlc-accumulated-input)
+                                            ""))))
                       else do (sleep-for rlc-timeout)
                       finally (run-hooks 'rlc-no-readline-hook))
               (set-process-filter proc filt))))))

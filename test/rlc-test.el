@@ -1,27 +1,37 @@
 ;; -*- lexical-binding: t -*-
 
-(defvar rlc-test-prompt "bash$ ")
+(defmacro context (description body)
+  `(progn (ert-runner-message "%s\n" ,description)
+          ,body))
 
-(defvar rlc-test-entries
-  '(("~/.em" . ".em")
-    ("/usr/lo" . "lo")
-    ("origin/ma" . "ma")
-    ("rebase --ab" . "--ab")
-    ("git che" . "che")
-    ("--arg=val" . "val")))
-
-(defmacro with-rlc-entry (entry body)
+(defmacro with-entry (entry body)
   `(with-temp-buffer
-     (insert ,rlc-test-prompt)
+     (insert prompt)
      (insert ,entry)
-     (let ((end-of-prompt (length rlc-test-prompt)))
-       (noflet ((comint-bol () (move-to-column end-of-prompt)))
+     (let ((prompt-end (length prompt)))
+       (noflet ((comint-bol () (move-to-column prompt-end)))
                ,body))))
 
-(ert-deftest rlc-shell-prefix-test ()
-  "Each test entry returns the given prefix."
-  (mapc
-   (lambda (test-entry)
-     (with-rlc-entry (car test-entry)
-                     (should (string= (rlc-prefix-chars) (cdr test-entry)))))
-   rlc-test-entries))
+(defmacro with-readline-output (op)
+  `(with-temp-buffer
+     (let ((proc (get-buffer-process (current-buffer))))
+       (process-send-string ,op))))
+
+(context "with a shell prompt"
+         (let ((prompt "bash$ "))
+           (context "given an entry"
+                    (let ((entries
+                           '(("~/.em" . ".em")
+                             ("/usr/lo" . "lo")
+                             ("origin/ma" . "ma")
+                             ("rebase --ab" . "--ab")
+                             ("git che" . "che")
+                             ("--arg=val" . "val"))))
+                      (ert-deftest shell-prefix-test ()
+                        "each test entry returns the given prefix"
+                        (mapc
+                         (lambda (entry)
+                           (with-entry (car entry)
+                                       (should (string= (rlc-prefix-chars)
+                                                        (cdr entry)))))
+                         entries))))))
