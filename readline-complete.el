@@ -229,7 +229,7 @@ rlc-attempts * rlc-timeout seconds.")
                       if (string-match regexp rlc-accumulated-input)
                       return (progn
                                (message "input: %s" rlc-accumulated-input)
-                               (unpath (split-string
+                               (rlc-unpath (split-string
                                         (or (match-string 1 rlc-accumulated-input)
                                             ""))))
                       else do (sleep-for rlc-timeout)
