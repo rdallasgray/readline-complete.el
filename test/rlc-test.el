@@ -1,9 +1,5 @@
 ;; -*- lexical-binding: t -*-
 
-(defmacro context (description body)
-  `(progn (ert-runner-message "%s\n" ,description)
-          ,body))
-
 (defmacro with-entry (entry body)
   `(with-temp-buffer
      (insert prompt)
@@ -17,21 +13,20 @@
      (let ((proc (get-buffer-process (current-buffer))))
        (process-send-string ,op))))
 
-(context "with a shell prompt"
-         (let ((prompt "bash$ "))
-           (context "given an entry"
-                    (let ((entries
-                           '(("~/.em" . ".em")
-                             ("/usr/lo" . "lo")
-                             ("origin/ma" . "ma")
-                             ("rebase --ab" . "--ab")
-                             ("git che" . "che")
-                             ("--arg=val" . "val"))))
-                      (ert-deftest shell-prefix-test ()
-                        "each test entry returns the given prefix"
-                        (mapc
-                         (lambda (entry)
-                           (with-entry (car entry)
-                                       (should (string= (rlc-prefix-chars)
-                                                        (cdr entry)))))
-                         entries))))))
+(describe "rlc-prefix-chars"
+          (let ((prompt "bash$ "))
+            (describe "given some entries"
+                      (let ((entries
+                             '(("~/.em" . ".em")
+                               ("/usr/lo" . "lo")
+                               ("origin/ma" . "ma")
+                               ("rebase --ab" . "--ab")
+                               ("git che" . "che")
+                               ("--arg=val" . "val"))))
+                        (it "returns the correct prefix for the entry"
+                            (mapc (lambda (entry)
+                                    (with-entry (car entry)
+                                                (expect (rlc-prefix-chars)
+                                                        :to-equal
+                                                        (cdr entry))))
+                                  entries))))))

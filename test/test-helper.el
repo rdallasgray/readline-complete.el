@@ -1,4 +1,5 @@
 (require 'noflet)
+(require 'f)
 
 (let ((current-directory (file-name-directory load-file-name)))
   (setq rlc-test-test-path (f-expand "." current-directory)
