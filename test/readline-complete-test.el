@@ -23,6 +23,38 @@
            ,@body))
        (f-delete output-file)))
 
+  (defun display-all-output (term)
+    (concat term
+            "\C-m\n"
+            "Display all 50 possibilities? (y or n)"
+            "\C-m\n"
+            prompt
+            term
+            "*"
+            (mapconcat (lambda (_) "\C-h \C-h") (concat term "*") "")
+            "\C-g"))
+
+  (defun more-output (term)
+    (concat term
+            "\C-m\n"
+            "line1\nline2\nline3\n"
+            "--More--\C-m\C-m"
+            prompt
+            term
+            "*"
+            (mapconcat (lambda (_) "\C-h \C-h") (concat term "*") "")
+            "\C-g"))
+
+  (defun completions-output (term completions)
+    (concat term
+            "\C-m\n"
+            completions
+            "\n"
+            prompt
+            term
+            "n*"
+            (mapconcat (lambda (_) "\C-h \C-h") (concat term "n*") "")))
+
   (describe
    "rlc-candidates, given a process buffer"
 
@@ -80,14 +112,7 @@ triggering completion, dismissing prompts and deleting the control characters"
        (describe
         "when the output is a `Display all' dialog"
 
-        (let ((output (concat term
-                              "\C-m\n"
-                              "Display all 50 possibilities? (y or n)"
-                              "\C-m\n"
-                              prompt
-                              term
-                              "*\C-h \C-h\C-h \C-h\C-h \C-h\C-g"
-                              )))
+        (let ((output (display-all-output term)))
 
           (it
            "matches the output"
@@ -107,13 +132,8 @@ triggering completion, dismissing prompts and deleting the control characters"
        (describe
         "when the output is a `More' dialog"
 
-        (let ((output (concat term
-                              "\C-m\n"
-                              "line1\nline2\nline3\n"
-                              "--More--\C-m\C-m"
-                              prompt
-                              term
-                              "*\C-h \C-h\C-h \C-h\C-h \C-h\C-g")))
+        (let ((output (more-output term)))
+
           (it
            "matches the output"
            (with-rlc-env
@@ -132,12 +152,8 @@ triggering completion, dismissing prompts and deleting the control characters"
        (describe
         "when output contains completions"
 
-        (let ((output (concat term
-                              "\C-m\n"
-                              "what whatis\nwhereis which\n"
-                              prompt
-                              term
-                              "n*\C-h \C-h\C-h \C-h\C-h \C-h\C-h \C-h")))
+        (let ((output (completions-output term
+                                          "what whatis whereis which")))
 
           (it "returns candidates, and reinstates the process filter"
               (with-rlc-env
@@ -145,4 +161,16 @@ triggering completion, dismissing prompts and deleting the control characters"
                (expect candidates :to-equal
                        '("what" "whatis" "whereis" "which"))
                (expect 'set-process-filter :to-have-been-called-with
-                       ps 'comint-output-filter))))))))))
+                       ps 'comint-output-filter))))
+
+        (describe
+         "when the completions contain path characters"
+
+         (let ((output (concat term
+                               "\C-m\n"
+                               "some/pathed/completion"
+                               prompt
+                               term
+                               "n*\C-h \C-h\C-h \C-h\C-h \C-h\C-h \C-h")))
+
+                  ))))))))
