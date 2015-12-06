@@ -1,8 +1,8 @@
-;;; readline-complete.el --- offers completions in shell mode 
-     
+;;; readline-complete.el --- offers completions in shell mode
+
 ;; Copyright (C) 2012 Christopher Monsanto
 ;; Copyright (C) 2014 Dmitry Gutov
-     
+
 ;; Author: Christopher Monsanto <chris@monsan.to>
 ;; Version: 1.0
 
@@ -92,7 +92,7 @@
 ;; customizations. Consider putting some of the following lines in
 ;; your bashrc (you can test if we are using Emacs for the session by
 ;; testing [[ $INSIDE_EMACS ]]. Note that readline-complete should
-;; work with the default readline settings.  
+;; work with the default readline settings.
 
 ;; - bell-style: it is preferable to disable the bell.
 ;;   bind 'set bell-style none'
@@ -127,7 +127,7 @@
 ;;   as input according to its bindings. Best to make tab characters not
 ;;   replaced by the default binding "\C-i": complete. Instead:
 ;;   bind '"\C-i": self-insert'
-;;   
+;;
 
 ;; *** Note that this package works with READLINE. Maybe editline (BSD
 ;; programs), NOT haskeline (ghci, unfortunately). Shells that don't use
@@ -150,7 +150,7 @@
 (require 'shell)
 
 (defvar rlc-attempts 30
-  "How many times should we wait for readline output, before
+  "How many times should we wait for readline output, before \
 aborting and running `rlc-no-readline-hook'?")
 
 (defvar rlc-timeout 0.03
@@ -159,76 +159,115 @@ not enabled on your terminal, you will wait a total of
 rlc-attempts * rlc-timeout seconds.")
 
 (defvar rlc-no-readline-hook nil
-  "Hook that is run when readline-complete cannot parse the
-  output. Useful for disabling autocompletion.")
+  "Hook that is run when readline-complete cannot parse the \
+output. Useful for disabling autocompletion.")
 
-(defvar rlc-accumulated-input nil
+(defvar rlc-accumulated-output nil
   "The input obtained so far by `rlc-filter'.")
 
 (defun rlc-filter (proc string)
-  "Process filter which accumulates text in `rlc-accumulated-input'."
-  (setq rlc-accumulated-input (concat rlc-accumulated-input string)))
+  "Process filter which accumulates text in `rlc-accumulated-output'."
+  (setq rlc-accumulated-output (concat rlc-accumulated-output string)))
+
+(defun rlc-regexp-more (term-re chars-to-delete)
+  "Match a 'More' dialog given TERM-RE and CHARS-TO-DELETE."
+  (concat "\C-m?\n"
+          "\\(?:\\(?:.*\n\\)+\\)"
+          "--More--\C-m\C-m"
+          ".*?"
+          term-re
+          "\\*"
+          (format "\\(?:\C-h \C-h\\)\\{%s\\}" (1- chars-to-delete))
+          "\C-g?"))
+
+(defun rlc-regexp-display-all (term-re chars-to-delete)
+  "Match a 'Display all' dialog given TERM-RE and CHARS-TO-DELETE."
+  (concat "\C-m?\n"
+          "Display all [0-9]+ possibilities\\? (y or n)"
+          "\C-m?\n.*?"
+          term-re
+          "\\*"
+          (format "\\(?:\C-h \C-h\\)\\{%s\\}" (1- chars-to-delete))
+          "\C-g?"))
+
+(defun rlc-regexp-completions (term-re chars-to-delete)
+  "Match readline completions given TERM-RE and CHARS-TO-DELETE."
+  (concat
+   "\\(?:"
+   "\C-m?\n"
+   "\\(\\(?:.*\n\\)+\\)"
+   ".*?"
+   term-re
+   "\\|"
+   "\C-g?"
+   "\\)"
+   "n\\*"
+   (format "\\(?:\C-h \C-h\\)\\{%s\\}" chars-to-delete)))
+
+(defun rlc-regexp (term)
+  "Match readline output given TERM."
+  (let ((term-re (regexp-quote term))
+        (chars-to-delete (+ (length term) (length "n*"))))
+    (concat
+     term-re
+     "\\(?:"
+     (rlc-regexp-more term-re chars-to-delete)
+     "\\|"
+     (rlc-regexp-display-all term-re chars-to-delete)
+     "\\|"
+     (rlc-regexp-completions term-re chars-to-delete)
+     "\\)")))
+
+(defun rlc-send-input (input proc)
+  "Send INPUT to the shell process PROC, show the completion menu, \
+dismiss any prompts, then delete the input."
+  (let* ((chars-to-delete (+ (length input) (length "n*")))
+         (str-to-send (concat input
+                              "\e?" ; show menu
+                              "n*"  ; dismiss prompts
+                              (make-string chars-to-delete ?\C-h))))
+    (process-send-string proc str-to-send)))
+
+(defun rlc-find-candidates (output regexp)
+  "Find match candidates in OUTPUT using REGEXP."
+  (let* ((matched (and output (string-match regexp output)))
+         (completions (when matched (split-string
+                                     (or (match-string 1 output) "")))))
+    `(,matched . ,completions)))
 
 (defun rlc-candidates ()
-  "Return the list of completions that readline would have given via completion-menu."
+  "Return the list of completions that readline would have given via \
+completion-menu."
   (let* ((proc (get-buffer-process (current-buffer)))
          (filt (process-filter proc))
-         (current-command (buffer-substring-no-properties
-                           (save-excursion (comint-bol) (point))
-                           (point)))
-                                        ; Must start with 'n' to cancel menus.
-         (lentodel (+ (length current-command) (length "n*")))
-                                        ; Regexp matching readline output. Highly sensitive!
-         (regexp (concat; "^"
-                         (regexp-quote current-command)
-                         "\\(?:"
-                           ; branch one: more dialog?
-                           "\C-m?\n"
-                           "\\(?:\\(?:.*\n\\)+\\)" ; match a bunch of lines (ignored)
-                           "--More--\C-m\C-m" ; A more dialog...
-                           ".*?" ; prompt
-                           (regexp-quote current-command)
-                           "\\*" ; terminator
-                           (format "\\(?:\C-h \C-h\\)\\{%s\\}" (1- lentodel))
-                           "\C-g?" ; maybe bell at the end (too many deletions)
-                         "\\|"
-                           "\C-m?\n"
-                           "Display all [0-9]+ possibilities\\? (y or n)" ; branch two: too many.
-                           "\C-m?\n.*?" ; prompt
-                           (regexp-quote current-command)
-                           "\\*" ; A terminator
-                                        ; Once for position backwards, once for space, once for reposition...
-                           (format "\\(?:\C-h \C-h\\)\\{%s\\}" (1- lentodel))
-                           "\C-g?" ; maybe bell at the end (too many deletions)
-                         "\\|"
-                           "\\(?:" ; branch three: enough
-                             "\C-m?\n"
-                             "\\(\\(?:.*\n\\)+\\)" ; success; match a bunch of lines
-                             ".*?" ; then match the prompt followed by our old input
-                                        ; stack overflow without non-greedy
-                             (regexp-quote current-command)
-                           "\\|"
-                             "\C-g?" ; maybe bell otherwise
-                           "\\)"
-                           "n\\*" ; Terminator
-                                        ; Once for position backwards, once for space, once for reposition...
-                           (format "\\(?:\C-h \C-h\\)\\{%s\\}" lentodel)
-                         "\\)"
-                         ;"$"
-                         )))
-    (setq rlc-accumulated-input "")
-    (set-process-filter proc 'rlc-filter)
-    (process-send-string proc (concat current-command
-                                      "\e?" ; show menu,
-                                      "n*" ; terminator
-                                      (make-string lentodel ?\C-h)))
-    (unwind-protect
-        (loop repeat rlc-attempts
-              if (string-match regexp rlc-accumulated-input)
-              return (split-string (or (match-string 1 rlc-accumulated-input) ""))
-              else do (sleep-for rlc-timeout)
-              finally (run-hooks 'rlc-no-readline-hook))
-      (set-process-filter proc filt))))
+         (term (buffer-substring-no-properties
+                (save-excursion (comint-bol) (point))
+                (point))))
+    (let ((matches '()))
+      (unwind-protect
+          (progn
+            (setq rlc-accumulated-output "")
+            (set-process-filter proc 'rlc-filter)
+            (rlc-send-input term proc)
+            (setq matches (rlc-attempt-match
+                           term
+                           (lambda () rlc-accumulated-output)))
+            (when (null matches) (run-hooks 'rlc-no-readline-hook)))
+        (set-process-filter proc filt))
+        matches)))
+
+(defun rlc-attempt-match (term get-output)
+  "Repeatedly attempt to match TERM in the result of GET-OUTPUT."
+  (let* ((regexp (rlc-regexp term))
+         (matched (catch 'matched
+                    (dotimes (done rlc-attempts)
+                      (let* ((output (funcall get-output))
+                             (match-cons (rlc-find-candidates output regexp)))
+                        (if (car match-cons)
+                            (throw 'matched (cdr match-cons))
+                          (when (not (eq done rlc-attempts))
+                            (sleep-for rlc-timeout))))))))
+    matched))
 
 ;; Auto-Complete
 ;;
@@ -246,7 +285,7 @@ rlc-attempts * rlc-timeout seconds.")
     )
   "ac-rlc works by checking the current prompt. This list holds
   all of ac-rlc's known prompts, along with an auto-complete
-  prefix to recognize contexts appropriate to the application. 
+  prefix to recognize contexts appropriate to the application.
 
 To disable ac-rlc for an application, add '(prompt ac-prefix-rlc-disable).")
 
