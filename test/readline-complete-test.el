@@ -166,11 +166,36 @@ triggering completion, dismissing prompts and deleting the control characters"
         (describe
          "when the completions contain path characters"
 
-         (let ((output (concat term
-                               "\C-m\n"
-                               "some/pathed/completion"
-                               prompt
-                               term
-                               "n*\C-h \C-h\C-h \C-h\C-h \C-h\C-h \C-h")))
+         (let ((completion "some/pathed/completion"))
 
-                  ))))))))
+           (describe
+            "when the term doesn't contain path characters")
+
+           (let ((output (completions-output term completion)))
+
+             (it "returns the full completions"
+                 (with-rlc-env
+                  term output
+                  (expect candidates :to-equal `(,completion))))
+
+           (describe
+            "when the term contains path characters")
+
+           (let ((term "some/pa")
+                 (output (completions-output term completion)))
+
+             (it "returns unpathed completions"
+                 (with-rlc-env
+                  term output
+                  (expect candidates :to-equal '("pathed/completion"))))
+
+           (let ((term "some/pathed/com")
+                 (output (completions-output term completion)))
+
+             (it "returns completions unpathed to the same level as the term"
+                 (with-rlc-env
+                  term output
+                  (expect candidates :to-equal '("completion"))))
+
+
+                  )))))))))))
