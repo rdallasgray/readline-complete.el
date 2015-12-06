@@ -192,31 +192,29 @@ output. Useful for disabling autocompletion.")
 
 (defun rlc-regexp-completions (term-re chars-to-delete)
   "Match readline completions given TERM-RE and CHARS-TO-DELETE."
-  (concat
-   "\\(?:"
-   "\C-m?\n"
-   "\\(\\(?:.*\n\\)+\\)"
-   ".*?"
-   term-re
-   "\\|"
-   "\C-g?"
-   "\\)"
-   "n\\*"
-   (format "\\(?:\C-h \C-h\\)\\{%s\\}" chars-to-delete)))
+  (concat "\\(?:"
+          "\C-m?\n"
+          "\\(\\(?:.*\n\\)+\\)"
+          ".*?"
+          term-re
+          "\\|"
+          "\C-g?"
+          "\\)"
+          "n\\*"
+          (format "\\(?:\C-h \C-h\\)\\{%s\\}" chars-to-delete)))
 
 (defun rlc-regexp (term)
   "Match readline output given TERM."
   (let ((term-re (regexp-quote term))
         (chars-to-delete (+ (length term) (length "n*"))))
-    (concat
-     term-re
-     "\\(?:"
-     (rlc-regexp-more term-re chars-to-delete)
-     "\\|"
-     (rlc-regexp-display-all term-re chars-to-delete)
-     "\\|"
-     (rlc-regexp-completions term-re chars-to-delete)
-     "\\)")))
+    (concat term-re
+            "\\(?:"
+            (rlc-regexp-more term-re chars-to-delete)
+            "\\|"
+            (rlc-regexp-display-all term-re chars-to-delete)
+            "\\|"
+            (rlc-regexp-completions term-re chars-to-delete)
+            "\\)")))
 
 (defun rlc-send-input (input proc)
   "Send INPUT to the shell process PROC, show the completion menu, \

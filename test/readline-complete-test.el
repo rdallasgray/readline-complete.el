@@ -86,7 +86,8 @@ triggering completion, dismissing prompts and deleting the control characters"
                               "\C-m\n"
                               prompt
                               term
-                              "*\C-h \C-h\C-h \C-h\C-h \C-h\C-g")))
+                              "*\C-h \C-h\C-h \C-h\C-h \C-h\C-g"
+                              )))
 
           (it
            "matches the output"
