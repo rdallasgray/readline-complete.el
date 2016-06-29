@@ -1,5 +1,6 @@
 ;; -*- lexical-binding: t -*-
 (require 'f)
+(require 'noflet)
 (require 'readline-complete)
 
 (let ((output-file "rlc-test-output")
@@ -16,11 +17,14 @@
           ps-name (current-buffer) "tail" nil "-f" output-file)
          (set-process-query-on-exit-flag
           (get-buffer-process (current-buffer)) nil)
-         (insert ,buffer-content)
+         (insert (concat ,prompt ,buffer-content))
          (f-write ,process-output 'utf-8 output-file)
-         (let ((candidates (rlc-candidates))
-               (ps (get-buffer-process (current-buffer))))
-           ,@body))
+         (noflet ((comint-bol ()
+                              (goto-char (point-min))
+                              (re-search-forward (regexp-quote prompt))))
+                 (let ((candidates (rlc-candidates))
+                       (ps (get-buffer-process (current-buffer))))
+                   ,@body)))
        (f-delete output-file)))
 
   (defun display-all-output (term)
@@ -161,41 +165,20 @@ triggering completion, dismissing prompts and deleting the control characters"
                (expect candidates :to-equal
                        '("what" "whatis" "whereis" "which"))
                (expect 'set-process-filter :to-have-been-called-with
-                       ps 'comint-output-filter))))
+                       ps 'comint-output-filter)))
 
-        (describe
-         "when the completions contain path characters"
-
-         (let ((completion "some/pathed/completion"))
-
-           (describe
-            "when the term doesn't contain path characters")
-
-           (let ((output (completions-output term completion)))
-
-             (it "returns the full completions"
-                 (with-rlc-env
-                  term output
-                  (expect candidates :to-equal `(,completion))))
-
-           (describe
-            "when the term contains path characters")
-
-           (let ((term "some/pa")
-                 (output (completions-output term completion)))
-
-             (it "returns unpathed completions"
-                 (with-rlc-env
-                  term output
-                  (expect candidates :to-equal '("pathed/completion"))))
-
-           (let ((term "some/pathed/com")
-                 (output (completions-output term completion)))
-
-             (it "returns completions unpathed to the same level as the term"
-                 (with-rlc-env
-                  term output
-                  (expect candidates :to-equal '("completion"))))
+          (describe
+           "prefix"
+           ;; Look at the current term
+           ;; (the last space-delimited input after the prompt).
+           ;; Say the term is rdg/a-g
+           ;; and the candidates are '("rdg/a-git-branch)
+           ;; Then we return the prefix "rdg/a-g".
+           ;; So if the candidates start with the term,
+           ;; the prefix is the term.
+           ;; Otherwise the prefix is what's returned by the
+           ;; custom prefix matcher.
 
 
-                  )))))))))))
+                    )))
+       )))))

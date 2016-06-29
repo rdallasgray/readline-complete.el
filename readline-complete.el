@@ -226,6 +226,12 @@ dismiss any prompts, then delete the input."
                               (make-string chars-to-delete ?\C-h))))
     (process-send-string proc str-to-send)))
 
+(defun rlc-term ()
+  "Get the current entered term."
+  (buffer-substring-no-properties
+   (save-excursion (comint-bol) (point))
+   (point)))
+
 (defun rlc-find-candidates (output regexp)
   "Find match candidates in OUTPUT using REGEXP."
   (let* ((matched (and output (string-match regexp output)))
@@ -238,21 +244,18 @@ dismiss any prompts, then delete the input."
 completion-menu."
   (let* ((proc (get-buffer-process (current-buffer)))
          (filt (process-filter proc))
-         (term (buffer-substring-no-properties
-                (save-excursion (comint-bol) (point))
-                (point))))
-    (let ((matches '()))
-      (unwind-protect
-          (progn
-            (setq rlc-accumulated-output "")
-            (set-process-filter proc 'rlc-filter)
-            (rlc-send-input term proc)
-            (setq matches (rlc-attempt-match
-                           term
-                           (lambda () rlc-accumulated-output)))
-            (when (null matches) (run-hooks 'rlc-no-readline-hook)))
-        (set-process-filter proc filt))
-        matches)))
+         (term (rlc-term))
+         (matches '()))
+    (unwind-protect
+        (progn
+          (setq rlc-accumulated-output "")
+          (set-process-filter proc 'rlc-filter)
+          (rlc-send-input term proc)
+          (setq matches (rlc-attempt-match term
+                                           (lambda () rlc-accumulated-output)))
+          (when (null matches) (run-hooks 'rlc-no-readline-hook)))
+      (set-process-filter proc filt))
+    matches))
 
 (defun rlc-attempt-match (term get-output)
   "Repeatedly attempt to match TERM in the result of GET-OUTPUT."
@@ -271,19 +274,16 @@ completion-menu."
 ;;
 
 (defvar ac-rlc-prompts
-  `(("^>>> " ac-prefix-default ac-prefix-c-dot) ; python, you have to
-                                        ; setup python to work with
-                                        ; readline though. use ipython instead.
-    ("^In \\[[0-9]+\\]: " ac-prefix-rlc-dot) ; ipython
-    ("^sftp> " ac-prefix-rlc-disable) ; sftp has no readline
-    ("^lftp [^>]+> " ac-prefix-rlc-shell) ; lftp
-    ("^\\[[0-9]+\\] pry([^>]> " ac-prefix-rlc-dot) ; pry
-    ("^irb([^>]> " ac-prefix-rlc-dot) ; irb, need irb -r irb/completion
-    (,shell-prompt-pattern ac-prefix-rlc-shell) ; Shell
-    )
+  `(("^>>> " ac-prefix-default ac-prefix-c-dot)
+    ("^In \\[[0-9]+\\]: " ac-prefix-rlc-dot)
+    ("^sftp> " ac-prefix-rlc-disable)
+    ("^lftp [^>]+> " ac-prefix-rlc-shell)
+    ("^\\[[0-9]+\\] pry([^>]> " ac-prefix-rlc-dot)
+    ("^irb([^>]> " ac-prefix-rlc-dot)
+    (,shell-prompt-pattern ac-prefix-rlc-shell))
   "ac-rlc works by checking the current prompt. This list holds
-  all of ac-rlc's known prompts, along with an auto-complete
-  prefix to recognize contexts appropriate to the application.
+all of ac-rlc's known prompts, along with an auto-complete
+prefix to recognize contexts appropriate to the application.
 
 To disable ac-rlc for an application, add '(prompt ac-prefix-rlc-disable).")
 
