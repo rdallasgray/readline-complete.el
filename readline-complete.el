@@ -149,11 +149,20 @@
 (require 'comint)
 (require 'shell)
 
-(defvar rlc-attempts 30
+(defvar rlc-shell-process-command "bash"
+  "Command used to start the shell process.")
+
+(defvar rlc-shell-process-name "rlc-shell-process"
+  "Name of the shell process.")
+
+(defvar rlc-shell-process-buffer-name "rlc-shell-process-buf"
+  "Name of the buffer belonging to the shell process.")
+
+(defvar rlc-attempts 3
   "How many times should we wait for readline output, before
 aborting and running `rlc-no-readline-hook'?")
 
-(defvar rlc-timeout 0.03
+(defvar rlc-timeout 0.5
   "Time, in seconds, to wait for readline output. If readline is
 not enabled on your terminal, you will wait a total of
 rlc-attempts * rlc-timeout seconds.")
@@ -169,69 +178,47 @@ rlc-attempts * rlc-timeout seconds.")
   "Process filter which accumulates text in `rlc-accumulated-output'."
   (setq rlc-accumulated-output (concat rlc-accumulated-output string)))
 
-(defun rlc-regexp-more (term-re chars-to-delete)
-  "Match a 'More' dialog given TERM-RE and CHARS-TO-DELETE."
-  (concat "\C-m?\n"
-          "\\(?:\\(?:.*\n\\)+\\)" ; match a bunch of lines (ignored)
-          "--More--\C-m\C-m"
-          ".*?" ; prompt
-          term-re
-          "\\*" ; terminator
-          (format "\\(?:\C-h \C-h\\)\\{%s\\}" (1- chars-to-delete))
-          ;; maybe bell at the end (too many deletions)
-          "\C-g?"))
+(defvar rlc-regexp-more
+  (concat "\\(?:\\(?:.*\n\\)+\\)"
+          "--More--\C-m\C-m")
+  "Match a 'More' dialog.")
 
-(defun rlc-regexp-too-many (term-re chars-to-delete)
-  "Match a 'Display all' dialog given TERM-RE and CHARS-TO-DELETE."
-  (concat "\C-m?\n"
-          "Display all [0-9]+ possibilities\\? (y or n)"
-          "\C-m?\n.*?" ; prompt
-          term-re
-          "\\*" ; A terminator
-          ;; Once for position backwards, once for space, once for reposition...
-          (format "\\(?:\C-h \C-h\\)\\{%s\\}" (1- chars-to-delete))
-          ;; maybe bell at the end (too many deletions)
-          "\C-g?"))
+(defvar rlc-regexp-display-all
+  "Display all [0-9]+ possibilities\\? (y or n)"
+  "Match a 'Display all' dialog.")
 
-(defun rlc-regexp-enough (term-re chars-to-delete)
-  "Match readline completions given TERM-RE and CHARS-TO-DELETE."
+(defvar rlc-regexp-completions
+  "\\(?:\\(\\(?:.*\n\\)+\\)\\)"
+  "Match readline completions.")
+
+(defvar rlc-regexp
   (concat
+   "\n.*\n"
    "\\(?:"
-   "\C-m?\n"
-   "\\(\\(?:.*\n\\)+\\)" ; success; match a bunch of lines
-   ".*?" ; then match the prompt followed by our old input
-   ;; stack overflow without non-greedy
-   term-re
+   rlc-regexp-more
    "\\|"
-   "\C-g?" ; maybe bell otherwise
-   "\\)"
-   "n\\*" ; Terminator
-   ;; Once for position backwards, once for space, once for reposition...
-   (format "\\(?:\C-h \C-h\\)\\{%s\\}" chars-to-delete)))
-
-(defun rlc-regexp (term)
-  "Match readline output given TERM."
-  (let ((term-re (regexp-quote term))
-        (chars-to-delete (+ (length term) (length "n*"))))
-    (concat
-     term-re
-     "\\(?:"
-     (rlc-regexp-more term-re chars-to-delete)
-     "\\|"
-     (rlc-regexp-too-many term-re chars-to-delete)
-     "\\|"
-     (rlc-regexp-enough term-re chars-to-delete)
-     "\\)"))
-  )
+   rlc-regexp-display-all
+   "\\|"
+   rlc-regexp-completions
+   "\\)")
+  "Match readline output.")
 
 (defun rlc-send-input (input proc)
   "Send INPUT to the shell process PROC, show the completion menu, \
-dismiss any prompts, then delete the input."
-  (let* ((chars-to-delete (+ (length input) (length "n*")))
-         (str-to-send (concat input
+and dismiss any prompts."
+  ;; Problems:
+  ;; - C-c while the process is starting kills it (so we need to know
+  ;; whether this is the first string we're sending to the process and NOT
+  ;; send C-c)
+  ;; - If we're in a sub-process (e.g. irb), completion will still
+  ;;   use plain bash
+  (let* ((str-to-send (concat "\C-c"
+                              "cd '" default-directory "'\n"
+                              input
                               "\e?" ; show menu
                               "n*"  ; dismiss prompts
-                              (make-string chars-to-delete ?\C-h))))
+                              )))
+    (message "Sending string %s" str-to-send)
     (process-send-string proc str-to-send)))
 
 (defun rlc-find-candidates (output regexp)
@@ -241,19 +228,23 @@ dismiss any prompts, then delete the input."
              (match-string 1 output))
     (split-string (match-string 1 output))))
 
-(defvar rlc-last-prefix-chars "")
-
-(defvar rlc-last-candidates nil)
-
 (defun rlc-candidates-async (callback)
   (funcall callback (rlc-candidates)))
 
+(defun rlc-get-shell-process ()
+  (or (get-process rlc-shell-process-name)
+      (rlc-create-shell-process)))
+
+(defun rlc-create-shell-process ()
+  (let ((rlc-shell-process (start-process rlc-shell-process-name
+                                          rlc-shell-process-buffer-name
+                                          rlc-shell-process-command)))
+    (set-process-filter rlc-shell-process 'rlc-filter)
+    rlc-shell-process))
+
 (defun rlc-candidates ()
-  "Return the list of completions that readline would have given via \
-completion-menu."
-  (let* ((proc (get-buffer-process (current-buffer)))
-         ;; Get the current process filter so we can restore it afterwards
-         (filt (process-filter proc))
+  "Return the list of readline completions."
+  (let* ((proc (rlc-get-shell-process))
          (term (buffer-substring-no-properties
                 (save-excursion (comint-bol) (point))
                 (point))))
@@ -261,32 +252,26 @@ completion-menu."
       (unwind-protect
           (progn
             (setq rlc-accumulated-output "")
-            ;; Set our filter, which captures all output
-            (set-process-filter proc 'rlc-filter)
             (rlc-send-input term proc)
             (setq matches (rlc-attempt-match
                            term
                            (lambda () rlc-accumulated-output)))
-            (when (null matches) (run-hooks 'rlc-no-readline-hook)))
-        ;; Restore the original filter
-        ;; (message "restoring original filter")
-        (set-process-filter proc filt))
-        matches)))
+            (when (null matches) (run-hooks 'rlc-no-readline-hook))))
+      matches)))
 
 (defun rlc-attempt-match (term get-output)
-  "Repeatedly attempt to match TERM in the result of GET-OUTPUT."
-  (let* ((regexp (rlc-regexp term))
-         (matched (catch 'matched
-                    (dotimes (done rlc-attempts)
-                      (let* ((output (funcall get-output))
-                             (matches (rlc-find-candidates output regexp)))
-                        (message "term: %s output: %s matches: %s"
-                                 term output matches)
-                        (if matches
-                            (throw 'matched matches)
-                          (when (not (eq done rlc-attempts))
-                            (sleep-for rlc-timeout))))))))
-    matched))
+  "Repeatedly attempt to match readline output for TERM \
+in the result of GET-OUTPUT."
+  (catch 'matched
+    (dotimes (done rlc-attempts)
+      (let* ((output (funcall get-output))
+             (matches (rlc-find-candidates output rlc-regexp)))
+        (message "term: %s output: %s matches: %s"
+                 term output matches)
+        (if matches
+            (throw 'matched matches)
+          (when (not (eq done rlc-attempts))
+            (sleep-for rlc-timeout)))))))
 
 ;; Auto-Complete
 ;;
