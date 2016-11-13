@@ -158,7 +158,8 @@ aborting and running `rlc-no-readline-hook'?")
 not enabled on your terminal, you will wait a total of
 rlc-attempts * rlc-timeout seconds.")
 
-(defvar rlc-no-readline-hook nil
+(defvar rlc-no-readline-hook
+  (lambda () (message "NO READLINE"))
   "Hook that is run when readline-complete cannot parse the
   output. Useful for disabling autocompletion.")
 
@@ -167,7 +168,8 @@ rlc-attempts * rlc-timeout seconds.")
 
 (defun rlc-filter (proc string)
   "Process filter which accumulates text in `rlc-accumulated-output'."
-  (setq rlc-accumulated-output (concat rlc-accumulated-output string)))
+  (setq rlc-accumulated-output (concat rlc-accumulated-output string))
+  (message "rlc-accumulated-output %s" rlc-accumulated-output))
 
 (defun rlc-regexp-more (term-re chars-to-delete)
   "Match a 'More' dialog given TERM-RE and CHARS-TO-DELETE."
@@ -207,7 +209,8 @@ rlc-attempts * rlc-timeout seconds.")
    "\\)"
    "n\\*" ; Terminator
    ;; Once for position backwards, once for space, once for reposition...
-   (format "\\(?:\C-h \C-h\\)\\{%s\\}" chars-to-delete)))
+   (format "\\(?:\C-h \C-h\\)\\{%s\\}" chars-to-delete)
+   ))
 
 (defun rlc-regexp (term)
   "Match readline output given TERM."
@@ -231,7 +234,10 @@ dismiss any prompts, then delete the input."
          (str-to-send (concat input
                               "\e?" ; show menu
                               "n*"  ; dismiss prompts
-                              (make-string chars-to-delete ?\C-h))))
+                              (make-string chars-to-delete ?\C-h)
+                              )))
+    (message "sending string %s" str-to-send)
+    (message "chars to delete %s" chars-to-delete)
     (process-send-string proc str-to-send)))
 
 (defun rlc-find-candidates (output regexp)
@@ -269,7 +275,7 @@ completion-menu."
                            (lambda () rlc-accumulated-output)))
             (when (null matches) (run-hooks 'rlc-no-readline-hook)))
         ;; Restore the original filter
-        ;; (message "restoring original filter")
+        (message "restoring original filter")
         (set-process-filter proc filt))
         matches)))
 
