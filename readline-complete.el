@@ -158,8 +158,11 @@ aborting and running `rlc-no-readline-hook'?")
 not enabled on your terminal, you will wait a total of
 rlc-attempts * rlc-timeout seconds.")
 
-(defvar rlc-no-readline-hook
-  (lambda () (message "NO READLINE"))
+(defvar rlc-no-readline-delay 0.125
+  "Time, in seconds, to wait wait before restoring the original 
+process filter when readline output couldn't be parsed.")
+
+(defvar rlc-no-readline-hook nil
   "Hook that is run when readline-complete cannot parse the
   output. Useful for disabling autocompletion.")
 
@@ -168,8 +171,7 @@ rlc-attempts * rlc-timeout seconds.")
 
 (defun rlc-filter (proc string)
   "Process filter which accumulates text in `rlc-accumulated-output'."
-  (setq rlc-accumulated-output (concat rlc-accumulated-output string))
-  (message "rlc-accumulated-output %s" rlc-accumulated-output))
+  (setq rlc-accumulated-output (concat rlc-accumulated-output string)))
 
 (defun rlc-regexp-more (term-re chars-to-delete)
   "Match a 'More' dialog given TERM-RE and CHARS-TO-DELETE."
@@ -234,10 +236,7 @@ dismiss any prompts, then delete the input."
          (str-to-send (concat input
                               "\e?" ; show menu
                               "n*"  ; dismiss prompts
-                              (make-string chars-to-delete ?\C-h)
-                              )))
-    (message "sending string %s" str-to-send)
-    (message "chars to delete %s" chars-to-delete)
+                              (make-string chars-to-delete ?\C-h))))
     (process-send-string proc str-to-send)))
 
 (defun rlc-find-candidates (output regexp)
@@ -262,22 +261,23 @@ completion-menu."
          (filt (process-filter proc))
          (term (buffer-substring-no-properties
                 (save-excursion (comint-bol) (point))
-                (point))))
-    (let ((matches '()))
-      (unwind-protect
-          (progn
-            (setq rlc-accumulated-output "")
-            ;; Set our filter, which captures all output
-            (set-process-filter proc 'rlc-filter)
-            (rlc-send-input term proc)
-            (setq matches (rlc-attempt-match
-                           term
-                           (lambda () rlc-accumulated-output)))
-            (when (null matches) (run-hooks 'rlc-no-readline-hook)))
-        ;; Restore the original filter
-        (message "restoring original filter")
-        (set-process-filter proc filt))
-        matches)))
+                (point)))
+         (matches '()))
+    (unwind-protect
+        (progn
+          (setq rlc-accumulated-output "")
+          ;; Set our filter, which captures all output
+          (set-process-filter proc 'rlc-filter)
+          (rlc-send-input term proc)
+          (setq matches (rlc-attempt-match
+                         term
+                         (lambda () rlc-accumulated-output)))
+          (when (null matches)
+            (sleep-for rlc-no-readline-delay)
+            (run-hooks 'rlc-no-readline-hook)))
+      ;; Restore the original filter
+      (set-process-filter proc filt))
+    matches))
 
 (defun rlc-attempt-match (term get-output)
   "Repeatedly attempt to match TERM in the result of GET-OUTPUT."
@@ -286,8 +286,6 @@ completion-menu."
                     (dotimes (done rlc-attempts)
                       (let* ((output (funcall get-output))
                              (matches (rlc-find-candidates output regexp)))
-                        (message "term: %s output: %s matches: %s"
-                                 term output matches)
                         (if matches
                             (throw 'matched matches)
                           (when (not (eq done rlc-attempts))
