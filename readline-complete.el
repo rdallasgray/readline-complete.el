@@ -317,7 +317,7 @@ To disable ac-rlc for an application, add '(prompt ac-prefix-rlc-disable).")
   nil)
 
 (defun ac-prefix-rlc-shell ()
-  (if (re-search-backward "[ /=]\\([^ /=]*\\)\\=" nil t)
+  (if (re-search-backward "[ =]\\([^ =]*\\)\\=" nil t)
       (match-beginning 1)))
 
 (defun ac-prefix-rlc-dot ()
