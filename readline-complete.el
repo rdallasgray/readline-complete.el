@@ -149,6 +149,10 @@
 (require 'comint)
 (require 'shell)
 
+(defvar rlc-idle-time 0.03
+  "How much idle time must elapse before trying to retrieve candidates
+(company only).")
+
 (defvar rlc-attempts 30
   "How many times should we wait for readline output, before
 aborting and running `rlc-no-readline-hook'?")
@@ -157,10 +161,6 @@ aborting and running `rlc-no-readline-hook'?")
   "Time, in seconds, to wait for readline output. If readline is
 not enabled on your terminal, you will wait a total of
 rlc-attempts * rlc-timeout seconds.")
-
-(defvar rlc-no-readline-delay 0.125
-  "Time, in seconds, to wait wait before restoring the original 
-process filter when readline output couldn't be parsed.")
 
 (defvar rlc-no-readline-hook nil
   "Hook that is run when readline-complete cannot parse the
@@ -251,7 +251,10 @@ dismiss any prompts, then delete the input."
 (defvar rlc-last-candidates nil)
 
 (defun rlc-candidates-async (callback)
-  (funcall callback (rlc-candidates)))
+  (setq rlc-company-callback callback)
+  (run-with-idle-timer rlc-idle-time nil
+                       (lambda ()
+                         (funcall rlc-company-callback (rlc-candidates)))))
 
 (defun rlc-candidates ()
   "Return the list of completions that readline would have given via \
@@ -273,7 +276,6 @@ completion-menu."
                          term
                          (lambda () rlc-accumulated-output)))
           (when (null matches)
-            (sleep-for rlc-no-readline-delay)
             (run-hooks 'rlc-no-readline-hook)))
       ;; Restore the original filter
       (set-process-filter proc filt))
