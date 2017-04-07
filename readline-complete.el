@@ -251,10 +251,10 @@ dismiss any prompts, then delete the input."
 (defvar rlc-last-candidates nil)
 
 (defun rlc-candidates-async (callback)
-  (setq rlc-company-callback callback)
+  (setq rlc-async-callback callback)
   (run-with-idle-timer rlc-idle-time nil
                        (lambda ()
-                         (funcall rlc-company-callback (rlc-candidates)))))
+                         (funcall rlc-async-callback (rlc-candidates)))))
 
 (defun rlc-candidates ()
   "Return the list of completions that readline would have given via \
