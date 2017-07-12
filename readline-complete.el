@@ -149,17 +149,17 @@
 (require 'comint)
 (require 'shell)
 
-(defvar rlc-idle-time 0.03
+(defvar rlc-idle-time 0.01
   "How much idle time must elapse before trying to retrieve candidates
 (company only).")
 
-(defvar rlc-attempts 30
+(defvar rlc-attempts 10
   "How many times should we wait for readline output, before
 aborting and running `rlc-no-readline-hook'?")
 
-(defvar rlc-timeout 0.03
+(defvar rlc-timeout 1
   "Time, in seconds, to wait for readline output. If readline is
-not enabled on your terminal, you will wait a total of
+Not enabled on your terminal, you will wait a total of
 rlc-attempts * rlc-timeout seconds.")
 
 (defvar rlc-no-readline-hook nil
@@ -211,8 +211,7 @@ rlc-attempts * rlc-timeout seconds.")
    "\\)"
    "n\\*" ; Terminator
    ;; Once for position backwards, once for space, once for reposition...
-   (format "\\(?:\C-h \C-h\\)\\{%s\\}" chars-to-delete)
-   ))
+   (format "\\(?:\C-h \C-h\\)\\{%s\\}" chars-to-delete)))
 
 (defun rlc-regexp (term)
   "Match readline output given TERM."
@@ -290,8 +289,8 @@ completion-menu."
                              (matches (rlc-find-candidates output regexp)))
                         (if matches
                             (throw 'matched matches)
-                          (when (not (eq done rlc-attempts))
-                            (sleep-for rlc-timeout))))))))
+                          (when (< done rlc-attempts))
+                            (sleep-for rlc-timeout)))))))
     matched))
 
 (defconst rlc-interpath-separator-regex "/[^ /]+")
@@ -300,10 +299,11 @@ completion-menu."
 (defun rlc-unpath (candidates)
   "If the full prefix is pathed, unpath CANDIDATES based on the length of path."
   ;; (message "Full prefix: %s" (full-rlc-prefix-chars))
-  (let ((n (- (length (split-string (rlc-full-prefix-chars) rlc-interpath-separator-regex)) 1)))
+  (let ((n (- (length (split-string (rlc-full-prefix-chars) rlc-interpath-separator-regex))
+              1)))
     (if (> n 0)
-        (mapcar (lambda (candidate)
-                  (rlc-unpath-nth candidate n)) candidates)
+        (mapcar (lambda (candidate) (rlc-unpath-nth candidate n))
+                candidates)
         candidates)))
 
 (defun rlc-unpath-nth (candidate n)
