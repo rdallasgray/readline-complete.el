@@ -268,6 +268,7 @@ completion-menu."
     (unwind-protect
         (progn
           (setq rlc-accumulated-output "")
+          (message "term: %s" term)
           ;; Set our filter, which captures all output
           (set-process-filter proc 'rlc-filter)
           (rlc-send-input term proc)
@@ -276,7 +277,7 @@ completion-menu."
                          (lambda () rlc-accumulated-output)))
           (when (null matches)
             (run-hooks 'rlc-no-readline-hook)))
-      (set-process-filter proc filt))
+      (set-process-filter proc nil))
     matches))
 
 (defun rlc-attempt-match (term get-output)
@@ -289,7 +290,8 @@ completion-menu."
                         (if matches
                             (throw 'matched matches)
                           (when (< done rlc-attempts))
-                          (sit-for rlc-timeout)))))))
+                          (progn (message "SLEEP")
+                                 (sit-for rlc-timeout))))))))
     matched))
 
 (defconst rlc-interpath-separator-regex "/[^ /]+")
