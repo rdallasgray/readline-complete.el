@@ -276,7 +276,6 @@ completion-menu."
                          (lambda () rlc-accumulated-output)))
           (when (null matches)
             (run-hooks 'rlc-no-readline-hook)))
-      ;; Restore the original filter
       (set-process-filter proc filt))
     matches))
 
@@ -290,7 +289,7 @@ completion-menu."
                         (if matches
                             (throw 'matched matches)
                           (when (< done rlc-attempts))
-                            (sleep-for rlc-timeout)))))))
+                          (sit-for rlc-timeout)))))))
     matched))
 
 (defconst rlc-interpath-separator-regex "/[^ /]+")
@@ -298,17 +297,14 @@ completion-menu."
 
 (defun rlc-unpath (candidates)
   "If the full prefix is pathed, unpath CANDIDATES based on the length of path."
-  ;; (message "Full prefix: %s" (full-rlc-prefix-chars))
-  (let ((n (- (length (split-string (rlc-full-prefix-chars) rlc-interpath-separator-regex))
-              1)))
+  (let ((n (- (length (split-string (rlc-full-prefix-chars) rlc-interpath-separator-regex)) 1)))
     (if (> n 0)
         (mapcar (lambda (candidate) (rlc-unpath-nth candidate n))
                 candidates)
-        candidates)))
+      candidates)))
 
 (defun rlc-unpath-nth (candidate n)
   "Unpath CANDIDATE at depth N."
-  ;; (message "Unpathing %s at %d" candidate n)
   (let* ((split-candidate (split-string candidate rlc-path-separator-regex))
          (nth-split (nth n split-candidate)))
     (if (and nth-split (not (string= "" nth-split)))
@@ -389,9 +385,9 @@ To disable ac-rlc for an application, add '(prompt ac-prefix-rlc-disable).")
   ;; definition loaded or else we get runtime error, but we want to keep
   ;; installation of auto-complete optional
   '(eval '(ac-define-source shell
-            '((candidates . rlc-candidates)
-              (prefix . ac-rlc-prefix-shell-dispatcher)
-              (requires . 0)))))
+                            '((candidates . rlc-candidates)
+                              (prefix . ac-rlc-prefix-shell-dispatcher)
+                              (requires . 0)))))
 
 ;; Company
 ;;
