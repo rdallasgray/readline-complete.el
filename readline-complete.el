@@ -153,11 +153,11 @@
   "How much idle time must elapse before trying to retrieve candidates
 (company only).")
 
-(defvar rlc-attempts 10
+(defvar rlc-attempts 5
   "How many times should we wait for readline output, before
 aborting and running `rlc-no-readline-hook'?")
 
-(defvar rlc-timeout 1
+(defvar rlc-timeout 0.25
   "Time, in seconds, to wait for readline output. If readline is
 Not enabled on your terminal, you will wait a total of
 rlc-attempts * rlc-timeout seconds.")
@@ -171,7 +171,7 @@ rlc-attempts * rlc-timeout seconds.")
 
 (defun rlc-filter (proc string)
   "Process filter which accumulates text in `rlc-accumulated-output'."
-  (setq rlc-accumulated-output (concat rlc-accumulated-output string)))
+    (setq rlc-accumulated-output (concat rlc-accumulated-output string)))
 
 (defun rlc-regexp-more (term-re chars-to-delete)
   "Match a 'More' dialog given TERM-RE and CHARS-TO-DELETE."
@@ -249,12 +249,6 @@ dismiss any prompts, then delete the input."
 
 (defvar rlc-last-candidates nil)
 
-(defun rlc-candidates-async (callback)
-  (setq rlc-async-callback callback)
-  (run-with-idle-timer rlc-idle-time nil
-                       (lambda ()
-                         (funcall rlc-async-callback (rlc-candidates)))))
-
 (defun rlc-candidates ()
   "Return the list of completions that readline would have given via \
 completion-menu."
@@ -268,7 +262,6 @@ completion-menu."
     (unwind-protect
         (progn
           (setq rlc-accumulated-output "")
-          (message "term: %s" term)
           ;; Set our filter, which captures all output
           (set-process-filter proc 'rlc-filter)
           (rlc-send-input term proc)
@@ -276,8 +269,10 @@ completion-menu."
                          term
                          (lambda () rlc-accumulated-output)))
           (when (null matches)
-            (run-hooks 'rlc-no-readline-hook)))
-      (set-process-filter proc nil))
+            (progn
+              (run-hooks 'rlc-no-readline-hook))))
+      (progn
+        (set-process-filter proc filt)))
     matches))
 
 (defun rlc-attempt-match (term get-output)
@@ -289,9 +284,9 @@ completion-menu."
                              (matches (rlc-find-candidates output regexp)))
                         (if matches
                             (throw 'matched matches)
-                          (when (< done rlc-attempts))
-                          (progn (message "SLEEP")
-                                 (sit-for rlc-timeout))))))))
+                          (when (< done rlc-attempts)
+                            (progn
+                              (sleep-for rlc-timeout)))))))))
     matched))
 
 (defconst rlc-interpath-separator-regex "/[^ /]+")
@@ -401,8 +396,7 @@ To disable ac-rlc for an application, add '(prompt ac-prefix-rlc-disable).")
   (case command
     (interactive (company-begin-backend 'company-readline))
     (prefix (rlc-prefix-chars))
-    (candidates (cons :async
-                      (lambda (callback) (rlc-candidates-async callback))))))
+    (candidates (rlc-candidates))))
 
 (provide 'readline-complete)
 
